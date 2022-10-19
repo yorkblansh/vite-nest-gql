@@ -45,28 +45,9 @@ export class BotService implements OnModuleInit {
 	}
 
 	handleText() {
-		// // Matches "/echo [whatever]"
-		// this.bot.onText(/\/echo (.+)/, (msg, match) => {
-		// 	// 'msg' is the received Message from Telegram
-		// 	// 'match' is the result of executing the regexp above on the text content
-		// 	// of the message
-
-		// 	const chatId = msg.chat.id
-		// 	const resp = match[1] // the captured "whatever"
-
-		// 	const messageOptions: TelegramBot.SendMessageOptions = {
-		// 		reply_markup: inlineKeyboard.getMarkup(),
-
-		// 	}
-		// 	// send back the matched "whatever" to the chat
-		// 	this.bot.sendMessage(chatId, resp, messageOptions)
-		// })
-
 		this.bot.onText(/(.+)/, (msg, match) => {
-			// console.log(match.input)
 			const chatId = msg.chat.id
 			const links = match.input.split(/\r?\n/)
-			// // console.log(links)
 			this.checkLinks(links, chatId)
 		})
 
@@ -205,160 +186,74 @@ export class BotService implements OnModuleInit {
 	}
 
 	private async checkLinks(links: string[], chatId: number) {
-		// let results: { linkName: string; status: string }[] = []
-		const check = async (
-			l: string[]
-		): Promise<{ linkName: string; status: string }[]> =>
-			await Promise.all(
-				l.map(async (link): Promise<{ linkName: string; status: string }> => {
-					return await this.httpService.axiosRef
-						.request({ baseURL: `https://${link}`, timeout: 5000 })
-						.then((r) =>
-							r.status === 200
-								? { linkName: link, status: r.status.toString() }
-								: { linkName: link, status: 'unknown errorrrrrr' }
-						)
-						.catch((er) => ({ linkName: link, status: 'bad' }))
-				})
-			)
+		const delay = (t: number, data?: string) =>
+			new Promise((resolve) => {
+				setTimeout(resolve.bind(null, data), t)
+			})
 
-		const part = chunk(links, 100)
-		const results = await Promise.all(part.map((v) => check(v)))
+		const httpRequest = (link: string) =>
+			this.httpService.axiosRef
+				.request({ baseURL: `https://${link}`, timeout: 3500 })
+				.then((r) =>
+					r.status === 200
+						? { linkName: link, status: r.status.toString() }
+						: { linkName: link, status: 'unknown errorrrrrr' }
+				)
+				.catch((er) => ({ linkName: link, status: 'bad' }))
 
-		const i = await Promise.all(
-			results.map((arr) =>
-				arr.map((o) => `${o.linkName} -- ${o.status}`).join('\n\n')
-			)
-		)
-		// links.map((link) => {
-		// 	// this.httpService.axiosRef
-		// 	// 	.request({ baseURL: `https://${link}`, timeout: 5000 })
-		// 	// 	.then((r) => {
-		// 	// 		if (r.status === 200) {
-		// 	// 			results.push({ linkName: link, status: r.status.toString() })
-		// 	// 			// this.bot.sendMessage(chatId, `${link} ${r.status.toString()}`)
-		// 	// 		}
-		// 	// 		// console.log({ link, hh: r })
-		// 	// 	})
-		// 	// 	.catch((er) => {
-		// 	// 		results.push({ linkName: link, status: 'bad' })
+		const checkAll = async (
+			array: string[],
+			cb: (r: { linkName: string; status: string }) => void
+		) => {
+			let index = 0
+			function next() {
+				if (index < array.length) {
+					return httpRequest(array[index++]).then(function (r) {
+						cb(r)
+						return delay(10).then(next)
+					})
+				}
+			}
+			return await Promise.resolve().then(next)
+		}
+		// usage
+		let arrr: {
+			linkName: string
+			status: string
+		}[] = []
+		checkAll(links, (r) => {
+			const index = links.indexOf(r.linkName)
+			sendReplyMessage(`Проверено: ${index} из ${links.length}`)
 
-		// 	// 		// this.bot.sendMessage(chatId, `${link} bad`)
+			try {
+				arrr.push(r)
+			} catch (error) {
+				console.log(error)
+			}
+		})
+			.then(() => {
+				chunk(arrr, 50)
+					.map((e) =>
+						e.map((el) => `${el.linkName} -- ${el.status}`).join('\n\n')
+					)
+					.map((t) => {
+						sendReplyMessage(t)
+					})
+			})
+			.then(() => {
+				setTimeout(() => {
+					sendReplyMessage('all DONE')
+				}, 500)
+			})
+			.catch((err) => {
+				// process error here
+			})
 
-		// 	// 		// console.log(er)
-		// 	// 	})
-		// })
-		// const r = results.map((o) => `${o.linkName} -- ${o.status}`).join('\n\n')
-
-		i.map((u) => {
+		const sendReplyMessage = (u: string) => {
 			// const messageOptions: TelegramBot.SendMessageOptions = {
 			// 	reply_markup: replyKeyboard.getMarkup(),
 			// }
 			this.bot.sendMessage(chatId, u)
-		})
+		}
 	}
 }
-
-// partners.accemedin.com
-// www.covid19.accemedin.com
-// admin.accemedin.com
-// camp.alterraschool.space
-// presentation.alterraschool.space
-// online.alterraschool.space
-// externat.alterraschool.space
-// school.angstremua.com
-// backend.angstremua.com
-// www.aplus.ua
-// bcsharks.aplus.ua
-// fayna.aplus.ua
-// study.atschool.com.ua
-// www.voshozdenieschool.com.ua
-// zm.jammschool.com.ua
-// mail.jammschool.com.ua
-// www.online.eurocollegium.com
-// mail.eurocollegium.com
-// www.cdo.org.ua
-// chat.cdo.org.ua
-// newbase.cdo.org.ua
-// mail.cdo.org.ua
-// www.listener.chat.cdo.org.ua
-// ntsadtamv.knute.edu.ua
-// sertificate.knute.edu.ua
-// ldn.knute.edu.ua
-// secs.knute.edu.ua
-// mia.knute.edu.ua
-// bug.knute.edu.ua
-// cdn.knute.edu.ua
-// mia.adm.knute.edu.ua
-// game.optima.school
-// kids.optima.school
-// courses.ed-era.com
-// eu-agreement.ed-era.com
-// www.nonviolence.ed-era.com
-// ukr-lifehacks.ed-era.com
-// biology.ed-era.com
-// ican.ed-era.com
-// www.entrepreneurship.ed-era.com
-// www.cocacola.ed-era.com
-// www.verified.ed-era.com
-// physics.ed-era.com
-// math.ed-era.com
-// ukr.ed-era.com
-// history.ed-era.com
-// anticorruption-lesson.ed-era.com
-// english.ed-era.com
-// stophate.ed-era.com
-// www.leader.ed-era.com
-// artmon59.ed-era.com
-// zno.ed-era.com
-// biomon69.ed-era.com
-// geography.ed-era.com
-// miyklas.com.ua
-// etutorium.com
-// smls.com.ua
-// nz.ua
-// e-schools.info
-// shodennik.ua
-// videoconferenceukraine.com
-// sendpulse.com
-// preply.com
-// portals.veracross.eu
-// sso.mapnwea.org
-// psikiev.follettdestiny.com
-// moodle.org
-// atutor.ca
-// classroom.google.com
-// new.edmodo.com
-// classdojo.com
-// docebo.com
-// zoom.us
-// freeconference.com
-// mon.gov.ua
-// kno.rada.gov.ua
-// don.kyivcity.gov.ua
-// www.vin.gov.ua
-// voladm.gov.ua
-// dn.gov.ua
-// adm.dp.gov.ua
-// osvita.zt.gov.ua
-// deponms.carpathia.gov.ua
-// osvita.zoda.gov.ua
-// osvita.kr-admin.gov.ua
-// oblosvita-lg.gov.ua
-// loda.gov.ua
-// osvita.odessa.gov.ua
-// www.poltav-oblosvita.gov.ua
-// www.osvita.sm.gov.ua
-// dniokh.gov.ua
-// uon.gov.ua
-// osvita.adm-km.gov.ua
-// www.osvita-cherkasy.gov.ua
-// uon.cg.gov.ua
-// vin-osvita.gov.ua
-// aikom.iea.gov.ua
-// pozashkillia.iea.gov.ua
-// sport.iea.gov.ua
-// academy.nszu.gov.ua
-// phc.org.ua
-// imzo.gov.ua
-// naps.gov.ua
