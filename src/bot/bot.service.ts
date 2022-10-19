@@ -207,7 +207,7 @@ export class BotService implements OnModuleInit {
 	private async checkLinks(links: string[], chatId: number) {
 		// let results: { linkName: string; status: string }[] = []
 		const check = async (
-			l: string[],
+			l: string[]
 		): Promise<{ linkName: string; status: string }[]> =>
 			await Promise.all(
 				l.map(async (link): Promise<{ linkName: string; status: string }> => {
@@ -216,10 +216,10 @@ export class BotService implements OnModuleInit {
 						.then((r) =>
 							r.status === 200
 								? { linkName: link, status: r.status.toString() }
-								: { linkName: link, status: 'unknown errorrrrrr' },
+								: { linkName: link, status: 'unknown errorrrrrr' }
 						)
 						.catch((er) => ({ linkName: link, status: 'bad' }))
-				}),
+				})
 			)
 
 		const part = chunk(links, 100)
@@ -227,8 +227,8 @@ export class BotService implements OnModuleInit {
 
 		const i = await Promise.all(
 			results.map((arr) =>
-				arr.map((o) => `${o.linkName} -- ${o.status}`).join('\n\n'),
-			),
+				arr.map((o) => `${o.linkName} -- ${o.status}`).join('\n\n')
+			)
 		)
 		// links.map((link) => {
 		// 	// this.httpService.axiosRef
