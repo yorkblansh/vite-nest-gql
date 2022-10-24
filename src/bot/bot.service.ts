@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common'
 import TelegramBot from 'node-telegram-bot-api'
 import { HttpService } from '@nestjs/axios'
 import chunk from 'lodash.chunk'
-
+import debounce from 'lodash.debounce'
 // const replyKeyboard = new ReplyKeyboard()
 // const inlineKeyboard = new InlineKeyboard()
 
@@ -185,6 +185,13 @@ export class BotService implements OnModuleInit {
 		this.bot.on('polling_error', (err) => console.log(err))
 	}
 
+	private sleep(cb, ms) {
+		return new Promise((resolve) => {
+			cb()
+			return setTimeout(resolve, ms)
+		})
+	}
+
 	private async checkLinks(links: string[], chatId: number) {
 		const delay = (t: number, data?: string) =>
 			new Promise((resolve) => {
@@ -193,13 +200,13 @@ export class BotService implements OnModuleInit {
 
 		const httpRequest = (link: string) =>
 			this.httpService.axiosRef
-				.request({ baseURL: `https://${link}`, timeout: 3500 })
+				.request({ baseURL: `https://${link}`, timeout: 5500 })
 				.then((r) =>
 					r.status === 200
-						? { linkName: link, status: r.status.toString() }
-						: { linkName: link, status: 'unknown errorrrrrr' }
+						? { linkName: `🟢  ${link}`, status: r.status.toString() }
+						: { linkName: `🟢  ${link}`, status: 'unknown errorrrrrr' }
 				)
-				.catch((er) => ({ linkName: link, status: 'bad' }))
+				.catch((er) => ({ linkName: `🔴  ${link}`, status: 'bad' }))
 
 		const checkAll = async (
 			array: string[],
@@ -210,50 +217,127 @@ export class BotService implements OnModuleInit {
 				if (index < array.length) {
 					return httpRequest(array[index++]).then(function (r) {
 						cb(r)
-						return delay(10).then(next)
+						const bb = index <= 2 ? 850 : 10
+						return delay(bb).then(next)
 					})
 				}
 			}
 			return await Promise.resolve().then(next)
 		}
 		// usage
-		let arrr: {
+		let res_arr: string[] = []
+		let res_arr_distr: {
 			linkName: string
 			status: string
-		}[] = []
-		checkAll(links, (r) => {
-			const index = links.indexOf(r.linkName)
-			sendReplyMessage(`Проверено: ${index} из ${links.length}`)
+		}[][] = []
+		let counterMessageId = 0
+		let checkedCounter = 0
+		const loopCount = 10
+		let timeStamp = null
 
-			try {
-				arrr.push(r)
-			} catch (error) {
-				console.log(error)
-			}
-		})
-			.then(() => {
-				chunk(arrr, 50)
-					.map((e) =>
-						e.map((el) => `${el.linkName} -- ${el.status}`).join('\n\n')
+		const updateMesaageId = (a: TelegramBot.Message) =>
+			(counterMessageId = a.message_id)
+		const sendFirst = (text: string) =>
+			sendReplyMessage(text).then(updateMesaageId)
+		const update = (text: string) =>
+			editMessage(text, counterMessageId).then(updateMesaageId)
+
+		chunk(links, links.length / loopCount).map((links_part, i) => {
+			let arrr: {
+				linkName: string
+				status: string
+			}[] = []
+
+			checkAll(links_part, async (r) => {
+				checkedCounter++
+				const index = links.indexOf(r.linkName)
+				const infoText = `Проверено: ${checkedCounter} из ${links.length}`
+
+				if (counterMessageId === 0 && i === 0) {
+					console.log(`${r.linkName} ${i}`)
+
+					sendFirst(infoText)
+				}
+
+				try {
+					arrr.push(r)
+				} catch (error) {
+					console.log(error)
+				}
+			})
+				.then(() => {
+					res_arr_distr.push(arrr)
+					res_arr.push(
+						arrr.map((el) => `${el.linkName} -- ${el.status}`).join('\n\n')
 					)
-					.map((t) => {
-						sendReplyMessage(t)
-					})
+
+					return res_arr
+				})
+				.then((aaa) => {
+					// res_arr.push(a)
+					if (aaa.length === loopCount) {
+						aaa.map((a) => sendReplyMessage(a))
+						setTimeout(() => {
+							// sendReplyMessage('all DONE')
+
+							const getCount = (status: '200' | 'bad') =>
+								res_arr_distr
+									.map((e) =>
+										e
+											.map((ee) =>
+												ee.status === status
+													? [ee.linkName, ee.status]
+													: undefined
+											)
+											.filter((e) => e !== undefined)
+									)
+
+									.reduce((prev, curr) => prev.concat(curr))
+
+							const ok = getCount('200')
+							const bad = getCount('bad')
+							// console.log(bad)
+
+							sendReplyMessage(
+								`Готово\n✅  доступные сайты: ${ok.length}\n❌  недоступные сайты: ${bad.length}`
+							)
+						}, 800)
+						clearInterval(bbh)
+					}
+				})
+
+				.catch((err) => {
+					// process error here
+				})
+		})
+
+		let h = 0
+		const cubeMap = ['🟥', '🟧', '🟨', '🟩', '🟦', '🟪']
+
+		const bbh = setInterval(() => {
+			try {
+				const jj = cubeMap[h]
+				update(`Проверено: ${checkedCounter} из ${links.length} ${jj}`)
+				if (h === cubeMap.length - 1) {
+					h = 0
+				} else {
+					h++
+				}
+			} catch (error) {}
+		}, 250)
+
+		const editMessage = (text: string, messageId: number) => {
+			return this.bot.editMessageText(text, {
+				chat_id: chatId,
+				message_id: messageId
 			})
-			.then(() => {
-				setTimeout(() => {
-					sendReplyMessage('all DONE')
-				}, 500)
-			})
-			.catch((err) => {
-				// process error here
-			})
+		}
 
 		const sendReplyMessage = (u: string) => {
 			// const messageOptions: TelegramBot.SendMessageOptions = {
 			// 	reply_markup: replyKeyboard.getMarkup(),
 			// }
-			this.bot.sendMessage(chatId, u)
+			return this.bot.sendMessage(chatId, u)
 		}
 	}
 }
