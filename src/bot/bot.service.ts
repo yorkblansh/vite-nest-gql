@@ -3,6 +3,10 @@ import TelegramBot from 'node-telegram-bot-api'
 import { HttpService } from '@nestjs/axios'
 import chunk from 'lodash.chunk'
 import debounce from 'lodash.debounce'
+import async from 'async'
+
+type LinkStatus = '200' | 'bad'
+
 // const replyKeyboard = new ReplyKeyboard()
 // const inlineKeyboard = new InlineKeyboard()
 
@@ -51,145 +55,7 @@ export class BotService implements OnModuleInit {
 			this.checkLinks(links, chatId)
 		})
 
-		// import {
-		// 	InlineKeyboard,
-		// 	ReplyKeyboard,
-		// 	ForceReply,
-		// 	Row,
-		// 	KeyboardButton,
-		// 	InlineKeyboardButton,
-		// } from 'node-telegram-keyboard-wrapper'
-		// import * as TelegramBot from 'node-telegram-bot-api'
-
-		// if (process.argv.length < 3) {
-		// 	throw new Error(
-		// 		'To test this bot, please pass a bot-token to the application.',
-		// 	)
-		// }
-
-		// const token = '1977330650:AAGBwqfpPKF7-hTUKiYZ98lrDkvefir0G4A'
-		// const bot = new TelegramBot(token, { polling: true })
-
-		// const BotState = {
-		// 	isReplyKeyboardOpen: false,
-		// }
-
-		// const replyKeyboard = new ReplyKeyboard()
-		// const inlineKeyboard = new InlineKeyboard()
-
-		// const firstReplyKeyboardRowToShowConstructor = new Row<KeyboardButton>(
-		// 	new KeyboardButton('1:1 Button'),
-		// 	new KeyboardButton('1:2 Button'),
-		// )
-
-		// const secondReplyKeyboardRowToShowRowAsArray = new Row<KeyboardButton>()
-
-		// secondReplyKeyboardRowToShowRowAsArray.push(
-		// 	new KeyboardButton('2:1 Button'),
-		// 	new KeyboardButton('2:2 Button'),
-		// )
-
-		// replyKeyboard.push(
-		// 	firstReplyKeyboardRowToShowConstructor,
-		// 	secondReplyKeyboardRowToShowRowAsArray,
-		// )
-
-		// inlineKeyboard.push(
-		// 	/**
-		// 	 * Forcing generic type here due to InlineKeyboardButton generic.
-		// 	 * See Row's file for a better Typescript explanation
-		// 	 */
-
-		// 	new Row<InlineKeyboardButton>(
-		// 		// new InlineKeyboardButton('1:2 Button', 'url', 'https://www.google.com'),
-		// 		new InlineKeyboardButton('1:1 Button', 'callback_data', 'Works 1!'),
-		// 		new InlineKeyboardButton('1:2 Button', 'callback_data', 'Works 2!'),
-		// 	),
-		// 	// new Row<InlineKeyboardButton>(
-		// 	// 	new InlineKeyboardButton('2:1 Button', 'callback_data', 'Works 3!'),
-		// 	// 	new InlineKeyboardButton('2:2 Button', 'callback_data', 'Works 4!'),
-		// 	// ),
-		// )
-
-		// function hasBotCommands(entities: TelegramBot.MessageEntity[]) {
-		// 	if (!entities || !(entities instanceof Array)) {
-		// 		return false
-		// 	}
-
-		// 	return entities.some((e) => e.type === 'bot_command')
-		// }
-
-		// bot.onText(/\/replyKeyboard/i, async (msg) => {
-		// 	const messageOptions: TelegramBot.SendMessageOptions = {
-		// 		reply_markup: replyKeyboard.getMarkup(),
-		// 	}
-
-		// 	await bot.sendMessage(
-		// 		msg.from.id,
-		// 		'This is a message with a reply keyboard. Click on one of the buttons to close it.',
-		// 		messageOptions,
-		// 	)
-		// 	BotState.isReplyKeyboardOpen = true
-		// })
-
-		// bot.onText(/\/forceReply/i, (msg) => {
-		// 	const options: TelegramBot.SendMessageOptions = {
-		// 		reply_markup: ForceReply.getMarkup(),
-		// 	}
-
-		// 	bot.sendMessage(
-		// 		msg.from.id,
-		// 		"Hey, this is a forced-reply. Reply me. C'mon. I dare you.",
-		// 		options,
-		// 	)
-		// })
-
-		// this.bot.onText(/\/start/i, (msg) => {
-		// 	const options: TelegramBot.SendMessageOptions = {
-		// 		reply_markup: inlineKeyboard.getMarkup(),
-		// 	}
-
-		// 	this.bot.sendMessage(msg.from.id, 'выводим клавиатуру', options)
-		// })
-
-		// this.bot.on('message', async (msg) => {
-		// 	if (!hasBotCommands(msg.entities)) {
-		// 		if (BotState.isReplyKeyboardOpen) {
-		// 			const options: TelegramBot.SendMessageOptions = {
-		// 				reply_markup: replyKeyboard.remove(),
-		// 			}
-
-		// 			await this.bot.sendMessage(
-		// 				msg.from.id,
-		// 				"Message Received. I'm closing the replyKeyboard.",
-		// 				options,
-		// 			)
-		// 			BotState.isReplyKeyboardOpen = false
-		// 		} else if (!!msg.reply_to_message) {
-		// 			await this.bot.sendMessage(
-		// 				msg.from.id,
-		// 				'HOW DARE YOU! But force reply worked.',
-		// 			)
-		// 		}
-		// 	}
-		// })
-
-		// this.bot.on('callback_query', async (query) => {
-		// 	await this.bot.answerCallbackQuery(query.id, { text: 'Action received!' })
-		// 	// await bot.sendMessage(
-		// 	// 	query.from.id,
-		// 	// 	'Hey there! You clicked on an inline button! ;) So, as you saw, the support library works!',
-		// 	// )
-		// })
-
 		this.bot.on('polling_error', (err) => console.log(err))
-	}
-
-	private sleep(cb, ms) {
-		return new Promise((resolve) => {
-			cb()
-			return setTimeout(resolve, ms)
-		})
 	}
 
 	private async checkLinks(links: string[], chatId: number) {
@@ -200,11 +66,11 @@ export class BotService implements OnModuleInit {
 
 		const httpRequest = (link: string) =>
 			this.httpService.axiosRef
-				.request({ baseURL: `https://${link}`, timeout: 5500 })
+				.request({ baseURL: `https://${link}`, timeout: 6500 })
 				.then((r) =>
 					r.status === 200
 						? { linkName: `🟢  ${link}`, status: r.status.toString() }
-						: { linkName: `🟢  ${link}`, status: 'unknown errorrrrrr' }
+						: { linkName: `🟡  ${link}`, status: 'unknown errorrrrrr' }
 				)
 				.catch((er) => ({ linkName: `🔴  ${link}`, status: 'bad' }))
 
@@ -217,7 +83,7 @@ export class BotService implements OnModuleInit {
 				if (index < array.length) {
 					return httpRequest(array[index++]).then(function (r) {
 						cb(r)
-						const bb = index <= 2 ? 850 : 10
+						const bb = index <= 2 ? 650 : 600
 						return delay(bb).then(next)
 					})
 				}
@@ -225,6 +91,27 @@ export class BotService implements OnModuleInit {
 			return await Promise.resolve().then(next)
 		}
 		// usage
+
+		const getLoopCount = () => {
+			const length = links.length
+			if (length <= 10) {
+				return 2
+			} else if (length <= 30) {
+				return 3
+			} else if (length <= 50) {
+				return 5
+			} else if (length <= 100) {
+				return 10
+			} else if (length <= 130) {
+				return 15
+			} else {
+				return 25
+			}
+		}
+
+		// const okArr: string[] = []
+		// const badArr: string[] = []
+
 		let res_arr: string[] = []
 		let res_arr_distr: {
 			linkName: string
@@ -232,8 +119,9 @@ export class BotService implements OnModuleInit {
 		}[][] = []
 		let counterMessageId = 0
 		let checkedCounter = 0
-		const loopCount = 10
+		const loopCount = getLoopCount()
 		let timeStamp = null
+		let isAlmostDone = false
 
 		const updateMesaageId = (a: TelegramBot.Message) =>
 			(counterMessageId = a.message_id)
@@ -248,7 +136,7 @@ export class BotService implements OnModuleInit {
 				status: string
 			}[] = []
 
-			checkAll(links_part, async (r) => {
+			checkAll(links_part, (r) => {
 				checkedCounter++
 				const index = links.indexOf(r.linkName)
 				const infoText = `Проверено: ${checkedCounter} из ${links.length}`
@@ -266,43 +154,61 @@ export class BotService implements OnModuleInit {
 				}
 			})
 				.then(() => {
+					const gg = arrr
+						.map((el) => `${el.linkName} -- ${el.status}`)
+						.join('\n\n')
+
 					res_arr_distr.push(arrr)
-					res_arr.push(
-						arrr.map((el) => `${el.linkName} -- ${el.status}`).join('\n\n')
-					)
+					res_arr.push(gg)
 
-					return res_arr
+					// console.log(res_arr_distr)
+					return { res_arr, res_arr_distr }
 				})
-				.then((aaa) => {
+				.then(async ({ res_arr, res_arr_distr: res_arr_distr___ }) => {
+					const aaa = res_arr
+					if (links.length >= 80) isAlmostDone = true
+					console.log('almost DONE')
 					// res_arr.push(a)
-					if (aaa.length === loopCount) {
-						aaa.map((a) => sendReplyMessage(a))
-						setTimeout(() => {
-							// sendReplyMessage('all DONE')
+					// console.log(aaa.length)
+					if (aaa.length === loopCount + 1) {
+						await checkAll(aaa, (a) => {
+							sendReplyMessage(a.linkName)
+						})
+						// await Promise.all(aaa.map((a) => sendReplyMessage(a)))
+						// sendReplyMessage('all DONE')
+						const getCount = (status_1: '200' | 'bad' | 'all') =>
+							res_arr_distr___
+								.map((e) =>
+									e
+										.filter((v) => {
+											if (v.status === '200' && status_1 === '200') {
+												return v
+											}
 
-							const getCount = (status: '200' | 'bad') =>
-								res_arr_distr
-									.map((e) =>
-										e
-											.map((ee) =>
-												ee.status === status
-													? [ee.linkName, ee.status]
-													: undefined
-											)
-											.filter((e) => e !== undefined)
-									)
+											if (v.status === 'bad' && status_1 === 'bad') {
+												return v
+											}
 
-									.reduce((prev, curr) => prev.concat(curr))
-
-							const ok = getCount('200')
-							const bad = getCount('bad')
-							// console.log(bad)
-
-							sendReplyMessage(
-								`Готово\n✅  доступные сайты: ${ok.length}\n❌  недоступные сайты: ${bad.length}`
-							)
-						}, 800)
+											if (status_1 === 'all') {
+												return v
+											}
+										})
+										.filter((e_1) => e_1 !== undefined)
+								)
+								.reduce((prev, curr) => prev.concat(curr))
+						const ok = getCount('200')
+						const bad = getCount('bad')
+						const all = getCount('all')
+						console.log(ok)
+						sendReplyMessage(
+							`Готово\n Всего проверено: ${all.length}\n✅  доступные сайты: ${ok.length}\n❌  недоступные сайты: ${bad.length}`
+						)
 						clearInterval(bbh)
+
+						return {
+							okArr: ok.map((v_1) => v_1.linkName),
+							badArr: bad.map((v_2) => v_2.linkName)
+						}
 					}
 				})
 
@@ -317,14 +223,21 @@ export class BotService implements OnModuleInit {
 		const bbh = setInterval(() => {
 			try {
 				const jj = cubeMap[h]
-				update(`Проверено: ${checkedCounter} из ${links.length} ${jj}`)
+				const finishText = () =>
+					isAlmostDone ? '\nПодготавливаем ответ...' : ''
+
+				update(
+					`Проверено: ${checkedCounter} из ${
+						links.length
+					} ${jj} ${finishText()}`
+				)
 				if (h === cubeMap.length - 1) {
 					h = 0
 				} else {
 					h++
 				}
 			} catch (error) {}
-		}, 250)
+		}, 400)
 
 		const editMessage = (text: string, messageId: number) => {
 			return this.bot.editMessageText(text, {
