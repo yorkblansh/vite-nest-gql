@@ -126,9 +126,9 @@ export class BotService implements OnModuleInit {
 
 		const updateMesaageId = (a: TelegramBot.Message) =>
 			(counterMessageId = a.message_id)
-		const sendFirst = (text: string) =>
+		const sendMessage = (text: string) =>
 			sendReplyMessage(text).then(updateMesaageId)
-		const update = (text: string) =>
+		const updateMessage = (text: string) =>
 			editMessage(text, counterMessageId).then(updateMesaageId)
 
 		chunk(links, links.length / loopCount).map((links_part, i) => {
@@ -145,7 +145,7 @@ export class BotService implements OnModuleInit {
 				if (counterMessageId === 0 && i === 0) {
 					console.log(`${r.linkName} ${i}`)
 
-					sendFirst(infoText)
+					sendMessage(infoText)
 				}
 
 				try {
@@ -227,7 +227,7 @@ export class BotService implements OnModuleInit {
 				const finishText = () =>
 					isAlmostDone ? '\nПодготавливаем ответ...' : ''
 
-				update(
+				updateMessage(
 					`Проверено: ${checkedCounter} из ${
 						links.length
 					} ${jj} ${finishText()}`
