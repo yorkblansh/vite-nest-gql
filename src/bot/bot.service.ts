@@ -47,13 +47,16 @@ export class BotService implements OnModuleInit {
 	}
 
 	handleCommands() {
+		this.handleLinks()
+		this.bot.on('polling_error', (err) => console.log(err))
+	}
+
+	private handleLinks() {
 		this.bot.onText(/(.+)/, (msg, match) => {
 			const chatId = msg.chat.id
 			const links = match.input.split(/\r?\n/)
 			this.checkLinks(links, chatId)
 		})
-
-		this.bot.on('polling_error', (err) => console.log(err))
 	}
 
 	private async checkLinks(links: string[], chatId: number) {
