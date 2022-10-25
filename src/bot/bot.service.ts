@@ -2,8 +2,6 @@ import { Injectable, OnModuleInit } from '@nestjs/common'
 import TelegramBot from 'node-telegram-bot-api'
 import { HttpService } from '@nestjs/axios'
 import chunk from 'lodash.chunk'
-import debounce from 'lodash.debounce'
-import async from 'async'
 
 type LinkStatus = '200' | 'bad'
 
