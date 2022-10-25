@@ -38,7 +38,7 @@ export class BotService implements OnModuleInit {
 
 	onModuleInit() {
 		this.initBot('1977330650:AAGBwqfpPKF7-hTUKiYZ98lrDkvefir0G4A')
-		this.handleText()
+		this.handleCommands()
 	}
 
 	initBot(token: string) {
@@ -46,7 +46,7 @@ export class BotService implements OnModuleInit {
 		this.bot = new TelegramBot(token, { polling: true })
 	}
 
-	handleText() {
+	handleCommands() {
 		this.bot.onText(/(.+)/, (msg, match) => {
 			const chatId = msg.chat.id
 			const links = match.input.split(/\r?\n/)
