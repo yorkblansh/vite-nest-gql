@@ -1,21 +1,7 @@
 import { defineConfig } from 'vite'
 import { VitePluginNode } from 'vite-plugin-node'
-import { externals } from 'rollup-plugin-node-externals'
-import autoExternal from 'rollup-plugin-auto-external'
 
 export default defineConfig({
-	// build: {
-	// 	// generate manifest.json in outDir
-	// 	// manifest: true,
-	// 	rollupOptions: {
-	// 		external: [
-	// 			'./src/fetcher/fetcher.module.ts',
-	// 			// '/src/fetcher/fetcher.service.ts'
-	// 		],
-	// 		// overwrite default .html entry
-	// 		input: '/src/fetcher/fetcher.module.ts'
-	// 	}
-	// },
 	// ...vite configures
 	server: {
 		// vite server configs, for details see \[vite doc\](https://vitejs.dev/config/#server-host)
@@ -39,9 +25,7 @@ export default defineConfig({
 			// like Nestjs (esbuild dont support 'emitDecoratorMetadata' yet)
 			// you need to INSTALL `@swc/core` as dev dependency if you want to use swc
 			tsCompiler: 'swc'
-		}),
-		autoExternal()
-		// externals({ include: 'src/fetcher/fetcher.module' })
+		})
 	],
 	optimizeDeps: {
 		// Vite does not work well with optionnal dependencies,
