@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common'
 import TelegramBot from 'node-telegram-bot-api'
 import { HttpService } from '@nestjs/axios'
 import chunk from 'lodash.chunk'
+import { FetcherService } from '../fetcher/fetcher.service'
 
 type LinkStatus = '200' | 'bad'
 
@@ -34,7 +35,10 @@ type LinkStatus = '200' | 'bad'
 export class BotService implements OnModuleInit {
 	private bot: TelegramBot
 
-	constructor(private readonly httpService: HttpService) {}
+	constructor(
+		private readonly httpService: HttpService,
+		private readonly fetcherService: FetcherService
+	) {}
 
 	onModuleInit() {
 		this.initBot('1977330650:AAGBwqfpPKF7-hTUKiYZ98lrDkvefir0G4A')
@@ -60,6 +64,7 @@ export class BotService implements OnModuleInit {
 	}
 
 	private async checkLinks(links: string[], chatId: number) {
+		const pp = this.fetcherService.httpRequest
 		const delay = (t: number, data?: string) =>
 			new Promise((resolve) => {
 				setTimeout(resolve.bind(null, data), t)
