@@ -6,6 +6,10 @@ import { FetcherService } from '../fetcher/fetcher.service'
 import { delayedMap, getLoopCount } from '../utils'
 
 type LinkStatus = '200' | 'bad'
+interface LinkStatusObject {
+	linkName: string
+	status: string
+}
 
 // const replyKeyboard = new ReplyKeyboard()
 // const inlineKeyboard = new InlineKeyboard()
@@ -66,12 +70,27 @@ export class BotService implements OnModuleInit {
 		})
 	}
 
+	private editMessage = (
+		chatId: string | number,
+		text: string,
+		messageId: number
+	) => {
+		return this.bot.editMessageText(text, {
+			chat_id: chatId,
+			message_id: messageId
+		})
+	}
+
+	private sendReplyMessage = (chatId: string | number, text: string) => {
+		// const messageOptions: TelegramBot.SendMessageOptions = {
+		// 	reply_markup: replyKeyboard.getMarkup(),
+		// }
+		return this.bot.sendMessage(chatId, text)
+	}
+
 	private async checkLinks(links: string[], chatId: number) {
 		let chunks: string[] = []
-		let linkStatusesCollection: {
-			linkName: string
-			status: string
-		}[][] = []
+		let linkStatusesCollection: LinkStatusObject[][] = []
 		let counterMessageId = 0
 		let checkedCounter = 0
 		const loopCount = getLoopCount(links.length)
@@ -80,12 +99,12 @@ export class BotService implements OnModuleInit {
 		const updateMesaageId = (a: TelegramBot.Message) =>
 			(counterMessageId = a.message_id)
 		const sendMessage = (text: string) =>
-			sendReplyMessage(text).then(updateMesaageId)
+			this.sendReplyMessage(chatId, text).then(updateMesaageId)
 		const updateMessage = (text: string) =>
-			editMessage(text, counterMessageId).then(updateMesaageId)
+			this.editMessage(chatId, text, counterMessageId).then(updateMesaageId)
 
 		const handleLoop = (linksPart: string[], i: number) => {
-			let linkStatuses: { linkName: string; status: string }[] = []
+			let linkStatuses: LinkStatusObject[] = []
 			const assembleChunks = () => {
 				const mergedLinks = linkStatuses
 					.map((el) => `${el.linkName} -- ${el.status}`)
@@ -97,16 +116,11 @@ export class BotService implements OnModuleInit {
 
 			delayedMap(
 				{ array: linksPart, delayMs: 600, promisedFn: this.httpRequest },
-				(r) => {
+				(linksStatus) => {
 					checkedCounter++
-					const index = links.indexOf(r.linkName)
 					const infoText = `Проверено: ${checkedCounter} из ${links.length}`
 					if (counterMessageId === 0 && i === 0) sendMessage(infoText)
-					try {
-						linkStatuses.push(r)
-					} catch (error) {
-						console.log(error)
-					}
+					linkStatuses.push(linksStatus)
 				}
 			)
 				.then(assembleChunks)
@@ -115,26 +129,36 @@ export class BotService implements OnModuleInit {
 					console.log('almost DONE')
 					if (chunks.length === loopCount + 1) {
 						await delayedMap({ delayMs: 600, array: chunks }, (a: any) => {
-							sendReplyMessage(a)
+							this.sendReplyMessage(chatId, a)
 						})
 
-						const getCount = (status_1: '200' | 'bad' | 'all') =>
+						const filterLinksStatuses = (
+							linksStatuses: LinkStatusObject[],
+							expectedStatus: LinkStatus | 'all'
+						) =>
+							linksStatuses
+								.filter((value) => {
+									if (value.status === '200' && expectedStatus === '200')
+										return value
+									if (value.status === 'bad' && expectedStatus === 'bad')
+										return value
+									if (expectedStatus === 'all') return value
+								})
+								.filter((linksStatus) => linksStatus !== undefined)
+
+						const getCount = (expectedStatus: '200' | 'bad' | 'all') =>
 							linkStatusesCollection
 								.map((linksStatuses) =>
-									linksStatuses
-										.filter((v) => {
-											if (v.status === '200' && status_1 === '200') return v
-											if (v.status === 'bad' && status_1 === 'bad') return v
-											if (status_1 === 'all') return v
-										})
-										.filter((e_1) => e_1 !== undefined)
+									filterLinksStatuses(linksStatuses, expectedStatus)
 								)
 								.reduce((prev, curr) => prev.concat(curr))
+
 						const ok = getCount('200')
 						const bad = getCount('bad')
 						const all = getCount('all')
 						console.log(ok)
-						sendReplyMessage(
+						this.sendReplyMessage(
+							chatId,
 							`Готово\n Всего проверено: ${all.length}\n✅  доступные сайты: ${ok.length}\n❌  недоступные сайты: ${bad.length}`
 						)
 						clearInterval(bbh)
@@ -174,19 +198,5 @@ export class BotService implements OnModuleInit {
 				}
 			} catch (error) {}
 		}, 400)
-
-		const editMessage = (text: string, messageId: number) => {
-			return this.bot.editMessageText(text, {
-				chat_id: chatId,
-				message_id: messageId
-			})
-		}
-
-		const sendReplyMessage = (u: string) => {
-			// const messageOptions: TelegramBot.SendMessageOptions = {
-			// 	reply_markup: replyKeyboard.getMarkup(),
-			// }
-			return this.bot.sendMessage(chatId, u)
-		}
 	}
 }
