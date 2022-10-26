@@ -64,13 +64,13 @@ export class BotService implements OnModuleInit {
 	}
 
 	private async checkLinks(links: string[], chatId: number) {
-		const pp = this.fetcherService.httpRequest
+		const httpRequest = this.fetcherService.httpRequest
 		const delay = (t: number, data?: string) =>
 			new Promise((resolve) => {
 				setTimeout(resolve.bind(null, data), t)
 			})
 
-
+	
 		const checkAll = async (
 			array: string[],
 			cb: (r: { linkName: string; status: string }) => void
