@@ -70,15 +70,6 @@ export class BotService implements OnModuleInit {
 				setTimeout(resolve.bind(null, data), t)
 			})
 
-		const httpRequest = (link: string) =>
-			this.httpService.axiosRef
-				.request({ baseURL: `https://${link}`, timeout: 6500 })
-				.then((r) =>
-					r.status === 200
-						? { linkName: `🟢  ${link}`, status: r.status.toString() }
-						: { linkName: `🟡  ${link}`, status: 'unknown errorrrrrr' }
-				)
-				.catch((er) => ({ linkName: `🔴  ${link}`, status: 'bad' }))
 
 		const checkAll = async (
 			array: string[],
