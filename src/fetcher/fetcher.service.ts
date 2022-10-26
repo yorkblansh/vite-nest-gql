@@ -8,7 +8,7 @@ type LinkStatus = '200' | 'bad'
 export class FetcherService {
 	constructor(private readonly httpService: HttpService) {}
 
-	async httpRequest(link: string) {
+	httpRequest = async (link: string) => {
 		try {
 			const r = await this.httpService.axiosRef.request({
 				baseURL: `https://${link}`,
