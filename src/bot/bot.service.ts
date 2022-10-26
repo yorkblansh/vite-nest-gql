@@ -70,18 +70,24 @@ export class BotService implements OnModuleInit {
 				setTimeout(resolve.bind(null, data), t)
 			})
 
-	
-		const checkAll = async (
-			array: string[],
+		const promisedFunction = (item: any) => new Promise((res) => res(item))
+
+		const delayedMap = async (
+			props: {
+				array: string[]
+				delayMs?: number
+				promisedFn?: (item: any) => Promise<any>
+			},
 			cb: (r: { linkName: string; status: string }) => void
 		) => {
+			const { delayMs, promisedFn, array } = props
+			const pfn = promisedFn ? promisedFn : promisedFunction
 			let index = 0
 			function next() {
 				if (index < array.length) {
-					return httpRequest(array[index++]).then(function (r) {
+					return pfn(array[index++]).then((r: any) => {
 						cb(r)
-						const bb = index <= 2 ? 650 : 600
-						return delay(bb).then(next)
+						return delay(delayMs).then(next)
 					})
 				}
 			}
@@ -127,29 +133,32 @@ export class BotService implements OnModuleInit {
 		const updateMessage = (text: string) =>
 			editMessage(text, counterMessageId).then(updateMesaageId)
 
-		chunk(links, links.length / loopCount).map((links_part, i) => {
+		chunk(links, links.length / loopCount).map((linksPart, i) => {
 			let arrr: {
 				linkName: string
 				status: string
 			}[] = []
 
-			checkAll(links_part, (r) => {
-				checkedCounter++
-				const index = links.indexOf(r.linkName)
-				const infoText = `Проверено: ${checkedCounter} из ${links.length}`
+			delayedMap(
+				{ array: linksPart, delayMs: 600, promisedFn: httpRequest },
+				(r) => {
+					checkedCounter++
+					const index = links.indexOf(r.linkName)
+					const infoText = `Проверено: ${checkedCounter} из ${links.length}`
 
-				if (counterMessageId === 0 && i === 0) {
-					console.log(`${r.linkName} ${i}`)
+					if (counterMessageId === 0 && i === 0) {
+						console.log(`${r.linkName} ${i}`)
 
-					sendMessage(infoText)
+						sendMessage(infoText)
+					}
+
+					try {
+						arrr.push(r)
+					} catch (error) {
+						console.log(error)
+					}
 				}
-
-				try {
-					arrr.push(r)
-				} catch (error) {
-					console.log(error)
-				}
-			})
+			)
 				.then(() => {
 					const gg = arrr
 						.map((el) => `${el.linkName} -- ${el.status}`)
@@ -168,8 +177,8 @@ export class BotService implements OnModuleInit {
 					// res_arr.push(a)
 					// console.log(aaa.length)
 					if (aaa.length === loopCount + 1) {
-						await checkAll(aaa, (a) => {
-							sendReplyMessage(a.linkName)
+						await delayedMap({ delayMs: 600, array: aaa }, (a: any) => {
+							sendReplyMessage(a)
 						})
 						// await Promise.all(aaa.map((a) => sendReplyMessage(a)))
 						// sendReplyMessage('all DONE')
