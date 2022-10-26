@@ -3,6 +3,7 @@ import TelegramBot from 'node-telegram-bot-api'
 import { HttpService } from '@nestjs/axios'
 import chunk from 'lodash.chunk'
 import { FetcherService } from '../fetcher/fetcher.service'
+import { delayedMap, getLoopCount } from '../utils'
 
 type LinkStatus = '200' | 'bad'
 
@@ -34,6 +35,7 @@ type LinkStatus = '200' | 'bad'
 @Injectable()
 export class BotService implements OnModuleInit {
 	private bot: TelegramBot
+	private httpRequest: FetcherService['httpRequest']
 
 	constructor(
 		private readonly httpService: HttpService,
@@ -56,6 +58,7 @@ export class BotService implements OnModuleInit {
 	}
 
 	private handleLinks() {
+		this.httpRequest = this.fetcherService.httpRequest
 		this.bot.onText(/(.+)/, (msg, match) => {
 			const chatId = msg.chat.id
 			const links = match.input.split(/\r?\n/)
@@ -64,66 +67,14 @@ export class BotService implements OnModuleInit {
 	}
 
 	private async checkLinks(links: string[], chatId: number) {
-		const httpRequest = this.fetcherService.httpRequest
-		const delay = (t: number, data?: string) =>
-			new Promise((resolve) => {
-				setTimeout(resolve.bind(null, data), t)
-			})
-
-		const promisedFunction = (item: any) => new Promise((res) => res(item))
-
-		const delayedMap = async (
-			props: {
-				array: string[]
-				delayMs?: number
-				promisedFn?: (item: any) => Promise<any>
-			},
-			cb: (r: { linkName: string; status: string }) => void
-		) => {
-			const { delayMs, promisedFn, array } = props
-			const pfn = promisedFn ? promisedFn : promisedFunction
-			let index = 0
-			function next() {
-				if (index < array.length) {
-					return pfn(array[index++]).then((r: any) => {
-						cb(r)
-						return delay(delayMs).then(next)
-					})
-				}
-			}
-			return await Promise.resolve().then(next)
-		}
-		// usage
-
-		const getLoopCount = () => {
-			const length = links.length
-			if (length <= 10) {
-				return 2
-			} else if (length <= 30) {
-				return 3
-			} else if (length <= 50) {
-				return 5
-			} else if (length <= 100) {
-				return 10
-			} else if (length <= 130) {
-				return 15
-			} else {
-				return 25
-			}
-		}
-
-		// const okArr: string[] = []
-		// const badArr: string[] = []
-
-		let res_arr: string[] = []
-		let res_arr_distr: {
+		let chunks: string[] = []
+		let linkStatusesCollection: {
 			linkName: string
 			status: string
 		}[][] = []
 		let counterMessageId = 0
 		let checkedCounter = 0
-		const loopCount = getLoopCount()
-		let timeStamp = null
+		const loopCount = getLoopCount(links.length)
 		let isAlmostDone = false
 
 		const updateMesaageId = (a: TelegramBot.Message) =>
@@ -133,71 +84,48 @@ export class BotService implements OnModuleInit {
 		const updateMessage = (text: string) =>
 			editMessage(text, counterMessageId).then(updateMesaageId)
 
-		chunk(links, links.length / loopCount).map((linksPart, i) => {
-			let arrr: {
-				linkName: string
-				status: string
-			}[] = []
+		const handleLoop = (linksPart: string[], i: number) => {
+			let linkStatuses: { linkName: string; status: string }[] = []
+			const assembleChunks = () => {
+				const mergedLinks = linkStatuses
+					.map((el) => `${el.linkName} -- ${el.status}`)
+					.join('\n\n')
+				linkStatusesCollection.push(linkStatuses)
+				chunks.push(mergedLinks)
+				return { chunks, linkStatusesCollection }
+			}
 
 			delayedMap(
-				{ array: linksPart, delayMs: 600, promisedFn: httpRequest },
+				{ array: linksPart, delayMs: 600, promisedFn: this.httpRequest },
 				(r) => {
 					checkedCounter++
 					const index = links.indexOf(r.linkName)
 					const infoText = `Проверено: ${checkedCounter} из ${links.length}`
-
-					if (counterMessageId === 0 && i === 0) {
-						console.log(`${r.linkName} ${i}`)
-
-						sendMessage(infoText)
-					}
-
+					if (counterMessageId === 0 && i === 0) sendMessage(infoText)
 					try {
-						arrr.push(r)
+						linkStatuses.push(r)
 					} catch (error) {
 						console.log(error)
 					}
 				}
 			)
-				.then(() => {
-					const gg = arrr
-						.map((el) => `${el.linkName} -- ${el.status}`)
-						.join('\n\n')
-
-					res_arr_distr.push(arrr)
-					res_arr.push(gg)
-
-					// console.log(res_arr_distr)
-					return { res_arr, res_arr_distr }
-				})
-				.then(async ({ res_arr, res_arr_distr: res_arr_distr___ }) => {
-					const aaa = res_arr
+				.then(assembleChunks)
+				.then(async ({ chunks, linkStatusesCollection }) => {
 					if (links.length >= 80) isAlmostDone = true
 					console.log('almost DONE')
-					// res_arr.push(a)
-					// console.log(aaa.length)
-					if (aaa.length === loopCount + 1) {
-						await delayedMap({ delayMs: 600, array: aaa }, (a: any) => {
+					if (chunks.length === loopCount + 1) {
+						await delayedMap({ delayMs: 600, array: chunks }, (a: any) => {
 							sendReplyMessage(a)
 						})
-						// await Promise.all(aaa.map((a) => sendReplyMessage(a)))
-						// sendReplyMessage('all DONE')
+
 						const getCount = (status_1: '200' | 'bad' | 'all') =>
-							res_arr_distr___
-								.map((e) =>
-									e
+							linkStatusesCollection
+								.map((linksStatuses) =>
+									linksStatuses
 										.filter((v) => {
-											if (v.status === '200' && status_1 === '200') {
-												return v
-											}
-
-											if (v.status === 'bad' && status_1 === 'bad') {
-												return v
-											}
-
-											if (status_1 === 'all') {
-												return v
-											}
+											if (v.status === '200' && status_1 === '200') return v
+											if (v.status === 'bad' && status_1 === 'bad') return v
+											if (status_1 === 'all') return v
 										})
 										.filter((e_1) => e_1 !== undefined)
 								)
@@ -221,7 +149,9 @@ export class BotService implements OnModuleInit {
 				.catch((err) => {
 					// process error here
 				})
-		})
+		}
+
+		chunk(links, links.length / loopCount).map(handleLoop)
 
 		let h = 0
 		const cubeMap = ['🟥', '🟧', '🟨', '🟩', '🟦', '🟪']
