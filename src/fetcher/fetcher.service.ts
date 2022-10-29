@@ -12,7 +12,7 @@ export class FetcherService {
 		try {
 			const r = await this.httpService.axiosRef.request({
 				baseURL: `https://${link}`,
-				timeout: 6500
+				timeout: 5500
 			})
 			return r.status === 200
 				? { linkName: `🟢  ${link}`, status: r.status.toString() }

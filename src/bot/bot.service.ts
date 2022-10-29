@@ -3,12 +3,19 @@ import TelegramBot from 'node-telegram-bot-api'
 import { HttpService } from '@nestjs/axios'
 import chunk from 'lodash.chunk'
 import { FetcherService } from '../fetcher/fetcher.service'
-import { delayedMap, getLoopCount } from '../utils'
+import {
+	delayedMap,
+	filterLinksStatuses,
+	getLoopCount,
+	LinkStatusObject
+} from '../utils'
+import * as dotenv from 'dotenv' // see https://github.com/motdotla/dotenv#how-do-i-use-dotenv-with-import
+dotenv.config()
 
-type LinkStatus = '200' | 'bad'
-interface LinkStatusObject {
-	linkName: string
-	status: string
+interface FinalMessage {
+	ok: string[]
+	bad: string[]
+	all: string[]
 }
 
 // const replyKeyboard = new ReplyKeyboard()
@@ -47,7 +54,7 @@ export class BotService implements OnModuleInit {
 	) {}
 
 	onModuleInit() {
-		this.initBot('1977330650:AAGBwqfpPKF7-hTUKiYZ98lrDkvefir0G4A')
+		this.initBot(process.env.BOT_KEY)
 		this.handleCommands()
 	}
 
@@ -57,18 +64,83 @@ export class BotService implements OnModuleInit {
 	}
 
 	handleCommands() {
-		this.handleLinks()
+		this.handleScaner()
 		this.bot.on('polling_error', (err) => console.log(err))
 	}
 
-	private handleLinks() {
+	private handleScaner() {
 		this.httpRequest = this.fetcherService.httpRequest
-		this.bot.onText(/(.+)/, (msg, match) => {
+		this.bot.onText(/(.+)/, async (msg, match) => {
+			let messageId = 0
 			const chatId = msg.chat.id
 			const links = match.input.split(/\r?\n/)
-			this.checkLinks(links, chatId)
+			let isAlmostDone = false
+
+			const updateMesaageId = (a: TelegramBot.Message) =>
+				(messageId = a.message_id)
+
+			const handleStartMessage = () => {
+				const infoText = `Проверено: ${1} из ${links.length}`
+				this.sendReplyMessage(chatId, infoText).then(updateMesaageId)
+			}
+
+			const handleUpdateMessage = (checkedCount, cubeIndex, cubeMap) => {
+				const percent = (checkedCount / links.length) * 100
+				if (percent >= 85) isAlmostDone = true
+				const text = `Проверено: ${checkedCount} из ${
+					links.length
+				} (${percent.toFixed(1)}%) ${cubeMap[cubeIndex]} ${
+					isAlmostDone ? '\nПодготавливаем ответ...' : ''
+				}`
+				this.editMessage(chatId, text, messageId).then(updateMesaageId)
+			}
+
+			const promisedResults = await this.checkLinks(links, {
+				handleStartMessage,
+				handleUpdateMessage
+			})
+			const allLinksLength = links.length
+			const loopCount = getLoopCount(links.length)
+
+			promisedResults.map(async (results) => {
+				const { chunks, linkStatusesCollection, updateInfoLoopId } =
+					await results
+				// if (allLinksLength >= 80) isAlmostDone = true
+				console.log('almost DONE')
+				if (chunks.length === loopCount + 1) {
+					await delayedMap({ delayMs: 300, array: chunks }, (text: any) => {
+						this.sendReplyMessage(chatId, text)
+					})
+					clearInterval(updateInfoLoopId)
+					this.sendFinalMessage(chatId, {
+						ok: this.getCountOf(linkStatusesCollection, '200'),
+						bad: this.getCountOf(linkStatusesCollection, 'bad'),
+						all: this.getCountOf(linkStatusesCollection, 'all')
+					})
+				}
+			})
 		})
 	}
+
+	private sendFinalMessage(
+		chatId: string | number,
+		{ ok, bad, all }: FinalMessage
+	) {
+		this.sendReplyMessage(
+			chatId,
+			`Готово\n Всего проверено: ${all.length}\n✅  доступные сайты: ${ok.length}\n❌  недоступные сайты: ${bad.length}`
+		)
+	}
+
+	private getCountOf = (
+		linkStatusesCollection,
+		expectedStatus: '200' | 'bad' | 'all'
+	) =>
+		linkStatusesCollection
+			.map((linksStatuses) => {
+				return filterLinksStatuses(linksStatuses, expectedStatus)
+			})
+			.reduce((prev, curr) => prev.concat(curr))
 
 	private editMessage = (
 		chatId: string | number,
@@ -88,115 +160,54 @@ export class BotService implements OnModuleInit {
 		return this.bot.sendMessage(chatId, text)
 	}
 
-	private async checkLinks(links: string[], chatId: number) {
+	private async checkLinks(
+		links: string[],
+		{ handleStartMessage, handleUpdateMessage }
+	) {
 		let chunks: string[] = []
 		let linkStatusesCollection: LinkStatusObject[][] = []
-		let counterMessageId = 0
-		let checkedCounter = 0
+		let checkedCount = 0
 		const loopCount = getLoopCount(links.length)
-		let isAlmostDone = false
+		let startMessageSended = false
 
-		const updateMesaageId = (a: TelegramBot.Message) =>
-			(counterMessageId = a.message_id)
-		const sendMessage = (text: string) =>
-			this.sendReplyMessage(chatId, text).then(updateMesaageId)
-		const updateMessage = (text: string) =>
-			this.editMessage(chatId, text, counterMessageId).then(updateMesaageId)
-
-		const handleLoop = (linksPart: string[], i: number) => {
+		const handleLoop = async (linksPart: string[], i: number) => {
 			let linkStatuses: LinkStatusObject[] = []
-			const assembleChunks = () => {
-				const mergedLinks = linkStatuses
-					.map((el) => `${el.linkName} -- ${el.status}`)
-					.join('\n\n')
-				linkStatusesCollection.push(linkStatuses)
-				chunks.push(mergedLinks)
-				return { chunks, linkStatusesCollection }
-			}
 
-			delayedMap(
-				{ array: linksPart, delayMs: 600, promisedFn: this.httpRequest },
+			await delayedMap(
+				{ array: linksPart, delayMs: 400, promisedFn: this.httpRequest },
 				(linksStatus) => {
-					checkedCounter++
-					const infoText = `Проверено: ${checkedCounter} из ${links.length}`
-					if (counterMessageId === 0 && i === 0) sendMessage(infoText)
+					checkedCount++
+					if (i === 0 && !startMessageSended) {
+						handleStartMessage()
+						startMessageSended = true
+					}
 					linkStatuses.push(linksStatus)
 				}
 			)
-				.then(assembleChunks)
-				.then(async ({ chunks, linkStatusesCollection }) => {
-					if (links.length >= 80) isAlmostDone = true
-					console.log('almost DONE')
-					if (chunks.length === loopCount + 1) {
-						await delayedMap({ delayMs: 600, array: chunks }, (a: any) => {
-							this.sendReplyMessage(chatId, a)
-						})
 
-						const filterLinksStatuses = (
-							linksStatuses: LinkStatusObject[],
-							expectedStatus: LinkStatus | 'all'
-						) =>
-							linksStatuses
-								.filter((value) => {
-									if (value.status === '200' && expectedStatus === '200')
-										return value
-									if (value.status === 'bad' && expectedStatus === 'bad')
-										return value
-									if (expectedStatus === 'all') return value
-								})
-								.filter((linksStatus) => linksStatus !== undefined)
+			const mergedLinks = linkStatuses
+				.map((el) => `${el.linkName} -- ${el.status}`)
+				.join('\n\n')
 
-						const getCount = (expectedStatus: '200' | 'bad' | 'all') =>
-							linkStatusesCollection
-								.map((linksStatuses) =>
-									filterLinksStatuses(linksStatuses, expectedStatus)
-								)
-								.reduce((prev, curr) => prev.concat(curr))
+			linkStatusesCollection.push(linkStatuses)
+			chunks.push(mergedLinks)
 
-						const ok = getCount('200')
-						const bad = getCount('bad')
-						const all = getCount('all')
-						console.log(ok)
-						this.sendReplyMessage(
-							chatId,
-							`Готово\n Всего проверено: ${all.length}\n✅  доступные сайты: ${ok.length}\n❌  недоступные сайты: ${bad.length}`
-						)
-						clearInterval(bbh)
-
-						return {
-							okArr: ok.map((v_1) => v_1.linkName),
-							badArr: bad.map((v_2) => v_2.linkName)
-						}
-					}
-				})
-
-				.catch((err) => {
-					// process error here
-				})
+			return {
+				chunks,
+				linkStatusesCollection,
+				checkedCount,
+				updateInfoLoopId
+			}
 		}
 
-		chunk(links, links.length / loopCount).map(handleLoop)
-
-		let h = 0
+		let cubeIndex = 0
 		const cubeMap = ['🟥', '🟧', '🟨', '🟩', '🟦', '🟪']
+		const updateInfoLoopId = setInterval(() => {
+			handleUpdateMessage(checkedCount, cubeIndex, cubeMap)
+			cubeIndex === cubeMap.length - 1 ? (cubeIndex = 0) : cubeIndex++
+		}, 500)
 
-		const bbh = setInterval(() => {
-			try {
-				const jj = cubeMap[h]
-				const finishText = () =>
-					isAlmostDone ? '\nПодготавливаем ответ...' : ''
-
-				updateMessage(
-					`Проверено: ${checkedCounter} из ${
-						links.length
-					} ${jj} ${finishText()}`
-				)
-				if (h === cubeMap.length - 1) {
-					h = 0
-				} else {
-					h++
-				}
-			} catch (error) {}
-		}, 400)
+		const chunkSize = links.length / loopCount
+		return chunk(links, chunkSize).map(handleLoop)
 	}
 }

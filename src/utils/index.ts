@@ -1,3 +1,9 @@
+export type LinkStatus = '200' | 'bad'
+export interface LinkStatusObject {
+	linkName: string
+	status: string
+}
+
 export const promisedFunction = (item: any) => new Promise((res) => res(item))
 
 export const delayedMap = async (
@@ -42,3 +48,15 @@ export const getLoopCount = (linksArrLength: number) => {
 		return 25
 	}
 }
+
+export const filterLinksStatuses = (
+	linksStatuses: LinkStatusObject[],
+	expectedStatus: LinkStatus | 'all'
+) =>
+	linksStatuses
+		.filter((value) => {
+			if (value.status === '200' && expectedStatus === '200') return value
+			if (value.status === 'bad' && expectedStatus === 'bad') return value
+			if (expectedStatus === 'all') return value
+		})
+		.filter((linksStatus) => linksStatus !== undefined)
