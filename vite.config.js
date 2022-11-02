@@ -36,7 +36,8 @@ export default defineConfig({
 			'cache-manager',
 			'class-transformer',
 			'class-validator',
-			'fastify-swagger'
+			'fastify-swagger',
+			"@apollo/subgraph"
 		]
 	}
 })
