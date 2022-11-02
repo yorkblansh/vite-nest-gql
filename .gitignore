@@ -37,3 +37,4 @@ lerna-debug.log*
 .yarn/unplugged
 .pnp.cjs
 .pnp.loader.mjs
+package-lock.json
